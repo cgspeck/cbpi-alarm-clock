@@ -1,19 +1,21 @@
 import logging
 import time
 
+
+from modules.core.props import Property, StepProperty
+from modules.core.step import StepBase
 from modules import cbpi
-from modules.core.controller import KettleController
-from modules.core.props import Property
 
-@cbpi.controller
-class PIDSmartBoilWithPump(KettleController):
-
+@cbpi.step
+class AlarmClockStep(StepBase):
     mode = Property.Select("Mode", options=["disabled", "enabled"], description="If enabled then this step will block until after the set time.")
     start_hour = Property.Select("Start Hour", options=list(range(23)))
     start_minute = Property.Select("Start Minute", options=list(range(0, 60, 5)))
+    force_off_at_start = Property.Select("Force off at start", options=["disabled", "enabled"], description="If enabled then this step will switch off the coils and pump when it starts.")
+    kettle = StepProperty.Kettle("Kettle")
 
     def __init__(self, *args, **kwds):
-        KettleController.__init__(self, *args, **kwds)
+        StepBase.__init__(self, *args, **kwds)
         self._logger = logging.getLogger(type(self).__name__)
 
     def stop(self):
