@@ -34,7 +34,7 @@ class AlarmClockStep(StepBase):
 
             self.end_datetime = self.construct_end_date(dt_now, m_start_hour, m_start_minute, add_days)
 
-            self.notify("Alarm clock enabled", "Brewing will continue at %s" % self.end_time, timeout=None)
+            self.notify("Alarm clock enabled", "Brewing will continue at %s" % self.end_datetime, timeout=None)
 
             if self.force_off_at_start == "enabled":
                 self.notify("Alarm clock enabled", "Turning pump and kettle off")
@@ -64,6 +64,11 @@ class AlarmClockStep(StepBase):
         )
 
     def execute(self):
+        if self.mode != "enabled":
+            self.notify("Alarm clock not enabled!", "Starting the next step")
+            self.next()
+            return
+
         if datetime.datetime.now() >= self.end_datetime:
             self.notify("Alarm clock triggered", "Starting the next step", timeout=None)
             self.next()
