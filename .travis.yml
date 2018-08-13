@@ -1,0 +1,13 @@
+sudo: required
+
+language: python
+
+services:
+  - docker
+
+before_install:
+  - docker pull python:2
+  - docker build -t cbpi-alarm-clock .
+
+script:
+  - docker run -it --rm cbpi-alarm-clock python -m unittest discover -s modules.plugins.cbpi_alarm_clock -v

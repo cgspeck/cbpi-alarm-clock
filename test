@@ -1,0 +1,4 @@
+#! /bin/bash
+docker build . -t cbpi-alarm-clock
+
+docker run -it --rm cbpi-alarm-clock python -m unittest discover -s modules.plugins.cbpi_alarm_clock -v
