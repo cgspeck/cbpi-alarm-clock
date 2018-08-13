@@ -1,5 +1,7 @@
 # Alarm Clock Custom Step
 
+[![Build Status](https://travis-ci.org/cgspeck/cbpi-alarm-clock.svg?branch=master)](https://travis-ci.org/cgspeck/cbpi-alarm-clock)
+
 This allows you to set up your equipment and water in advance and have the process pause until a set time.
 
 ## Parameters
