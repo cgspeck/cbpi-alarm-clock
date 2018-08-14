@@ -7,9 +7,26 @@ from modules.core.props import Property, StepProperty
 from modules.core.step import StepBase
 from modules import cbpi
 
+# from timezones import zones
+
+def timezone_desc():
+    server_timezone = time.timezone
+    if server_timezone == 0:
+        return "Server timezone is in UTC, please set your local timezone here"
+    else:
+        return "Server timezone is {0} and this will be used".format(server_timezone)
+
+
 @cbpi.step
 class AlarmClockStep(StepBase):
     mode = Property.Select("Mode", options=["disabled", "enabled"], description="If enabled then this step will block until after the set time.")
+
+    timezone = Property.Select(
+        "Timezone",
+        # options=sorted(zones.get_timezones_dict().keys()),
+        options=["1", "2", "3"],
+        description=timezone_desc()
+    )
     start_hour = Property.Select("Start Hour", options=list(range(23)))
     start_minute = Property.Select("Start Minute", options=list(range(0, 60, 5)))
     force_off_at_start = Property.Select("Force off at start", options=["disabled", "enabled"], description="If enabled then this step will switch off pump and set temp to 0 when it starts.")
@@ -43,6 +60,19 @@ class AlarmClockStep(StepBase):
         else:
             self.notify("Alarm clock not enabled!", "Starting the next step")
             self.next()
+
+    @staticmethod
+    def timezoneseconds_to_fixed_offset(timezoneseconds):
+        minutes = abs(timezoneseconds) % 3600 / 60
+        hours = abs(timezoneseconds) / 60 / 60
+        sign_bit = int(timezoneseconds < 0)
+        sign_char = '-' if sign_bit else '+'
+        return "GMT {sign_char}{hours}:{minutes:02d}".format(
+            sign_char=sign_char,
+            hours=hours,
+            minutes=minutes
+        )
+
 
     @staticmethod
     def start_time_is_tomorrow(dt_now, end_timedelta):
