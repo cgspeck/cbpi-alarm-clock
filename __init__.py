@@ -1,6 +1,7 @@
 #! /bin/env python2.7
 import datetime
 import logging
+from datetime import timedelta
 import time
 
 from modules.core.props import Property, StepProperty
@@ -8,13 +9,85 @@ from modules.core.step import StepBase
 from modules import cbpi
 
 # from timezones import zones
+class FixedOffsetTimezone(object):
+    """Fixed offset in minutes east from UTC."""
+    @classmethod
+    def timezoneminutes_to_fixed_offset_string(cls, timezoneminutes):
+        return cls.timezoneseconds_to_fixed_offset_string(timezoneminutes * 60)
 
-def timezone_desc():
-    server_timezone = time.timezone
-    if server_timezone == 0:
-        return "Server timezone is in UTC, please set your local timezone here"
-    else:
-        return "Server timezone is {0} and this will be used".format(server_timezone)
+    @staticmethod
+    def timezoneseconds_to_fixed_offset_string(timezoneseconds):
+        minutes = abs(timezoneseconds) % 3600 / 60
+        hours = abs(timezoneseconds) / 60 / 60
+        sign_bit = int(timezoneseconds < 0)
+        sign_char = '-' if sign_bit else '+'
+        return "UTC{sign_char}{hours:02d}:{minutes:02d}".format(
+            sign_char=sign_char,
+            hours=hours,
+            minutes=minutes
+        )
+
+    @staticmethod
+    def server_timezone_in_utc():
+        return time.timezone == 0
+
+    @classmethod
+    def server_timezone_desc(cls):
+        if cls.server_timezone_in_utc():
+            return "Server timezone is in UTC, please set your local timezone here"
+        else:
+            server_timezone = time.timezone
+            server_timezone_string = cls.timezoneseconds_to_fixed_offset_string(server_timezone)
+            return "Server timezone is {0} and this will be used".format(
+                server_timezone_string
+            )
+
+    @classmethod
+    def fromSeconds(cls, seconds):
+        return cls(seconds // 60)
+
+    @classmethod
+    def utcTimezone(cls):
+        return cls(0)
+
+    def __init__(self, offset):
+        """
+        Fixed offset in minutes east from UTC.
+
+        offset is int (minutes)
+        or string in form of 'UTC[-+]HH:MM'
+        """
+        if isinstance(offset, int):
+            if offset >= 720 or offset <= -720:
+                raise ValueError('Offset cannot be >= 720 minutes, try #fromSeconds if creating a fixed offset from seconds')
+
+            self.__offset = timedelta(minutes = offset)
+            self.__name = self.timezoneminutes_to_fixed_offset_string(offset)
+        elif isinstance(offset, str):
+            if not offset.startswith("UTC"):
+                raise RuntimeError
+
+            sign_char = offset[3]
+            sign_multiplier = 1 if sign_char == '+' else -1
+            hours = offset[4:6]
+            minutes = offset[7:]
+            self.__offset = int(minutes) + int(hours) * 60 * sign_multiplier
+            self.__name = offset
+        else:
+            raise RuntimeError
+
+
+    def utcoffset(self, dt):
+        return self.__offset
+
+    def tzname(self, dt):
+        return self.__name
+
+    def dst(self, dt):
+        return ZERO
+
+
+# https://en.wikipedia.org/wiki/List_of_UTC_time_offsets
 
 
 @cbpi.step
@@ -25,7 +98,7 @@ class AlarmClockStep(StepBase):
         "Timezone",
         # options=sorted(zones.get_timezones_dict().keys()),
         options=["1", "2", "3"],
-        description=timezone_desc()
+        description=FixedOffsetTimezone.server_timezone_desc()
     )
     start_hour = Property.Select("Start Hour", options=list(range(23)))
     start_minute = Property.Select("Start Minute", options=list(range(0, 60, 5)))
@@ -62,19 +135,6 @@ class AlarmClockStep(StepBase):
             self.next()
 
     @staticmethod
-    def timezoneseconds_to_fixed_offset(timezoneseconds):
-        minutes = abs(timezoneseconds) % 3600 / 60
-        hours = abs(timezoneseconds) / 60 / 60
-        sign_bit = int(timezoneseconds < 0)
-        sign_char = '-' if sign_bit else '+'
-        return "GMT {sign_char}{hours}:{minutes:02d}".format(
-            sign_char=sign_char,
-            hours=hours,
-            minutes=minutes
-        )
-
-
-    @staticmethod
     def start_time_is_tomorrow(dt_now, end_timedelta):
         now_timedelta = datetime.timedelta(
             hours=dt_now.hour,
@@ -99,6 +159,6 @@ class AlarmClockStep(StepBase):
             self.next()
             return
 
-        if datetime.datetime.now() >= self.end_datetime:
+        if datetime.datetime.now(FixedOffsetTimezone.utcTimezone()) >= self.end_datetime:
             self.notify("Alarm clock triggered", "Starting the next step", timeout=None)
             self.next()
