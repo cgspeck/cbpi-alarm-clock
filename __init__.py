@@ -28,21 +28,6 @@ class FixedOffsetTimezone(tzinfo):
             minutes=minutes
         )
 
-    @staticmethod
-    def server_timezone_in_utc():
-        return time.timezone == 0
-
-    @classmethod
-    def server_timezone_desc(cls):
-        if cls.server_timezone_in_utc():
-            return "Server timezone is in UTC, please set your local timezone here"
-        else:
-            server_timezone = time.timezone
-            server_timezone_string = cls.timezoneseconds_to_fixed_offset_string(server_timezone)
-            return "Server timezone is {0} and this will be used".format(
-                server_timezone_string
-            )
-
     @classmethod
     def fromSeconds(cls, seconds):
         return cls(seconds // 60)
@@ -147,9 +132,9 @@ class AlarmClockStep(StepBase):
     mode = Property.Select("Mode", options=["disabled", "enabled"], description="If enabled then this step will block until after the set time.")
 
     timezone = Property.Select(
-        "Timezone",
+        "Your Timezone",
         options=SELECTABLE_TIMEZONES,
-        description=FixedOffsetTimezone.server_timezone_desc()
+        description="Please set your local timezone here."
     )
     start_hour = Property.Select("Start Hour", options=list(range(23)))
     start_minute = Property.Select("Start Minute", options=list(range(0, 60, 5)))
@@ -171,23 +156,19 @@ class AlarmClockStep(StepBase):
             )
             dt_utc_now = datetime.utcnow()
 
-            if FixedOffsetTimezone.server_timezone_in_utc():
-                try:
-                    self._logger.info("AlarmClock: Trying to create user set timezone %s" % self.timezone)
-                    local_timezone = FixedOffsetTimezone(self.timezone)
-                except:
-                    self._logger.info("AlarmClock: server is UTC and localtimezone is unset or invalid")
-                    self.notify(
-                        "Alarm clock not configured",
-                        "Server is in UTC, please select a timezone in step configuration",
-                        type="danger",
-                        timeout=None
-                    )
-                    self.mode = "disabled"
-                    return
-            else:
-                self._logger.info("AlarmClock: server is localtime, using that timezone")
-                local_timezone = FixedOffsetTimezone.fromSeconds(time.timezone)
+            try:
+                self._logger.info("AlarmClock: Trying to create user set timezone %s" % self.timezone)
+                local_timezone = FixedOffsetTimezone(self.timezone)
+            except:
+                self._logger.info("AlarmClock: timezone is unset or invalid (%s)" % self.timezone)
+                self.notify(
+                    "Alarm clock not configured",
+                    "Please select your local timezone in step configuration",
+                    type="danger",
+                    timeout=None
+                )
+                self.mode = "disabled"
+                return
 
             self._logger.info("AlarmClock: localtime_timezone: %s" % local_timezone)
             dt_utc_now = dt_utc_now.replace(tzinfo=FixedOffsetTimezone.utcTimezone())
@@ -205,16 +186,16 @@ class AlarmClockStep(StepBase):
             ).replace(tzinfo=local_timezone)
 
             self.end_datetime_utc = end_datetime_local.astimezone(FixedOffsetTimezone.utcTimezone())
-            self._logger.info("AlarmClock: ending time in UTC: %s" % end_datetime_local)
-            self._logger.info("AlarmClock: ending localtime: %s" % self.end_datetime_utc)
+            self._logger.info("AlarmClock: ending time in UTC: %s" % self.end_datetime_utc)
+            self._logger.info("AlarmClock: ending localtime: %s" % end_datetime_local)
 
-            self.notify("Alarm clock enabled", "Current server time is {current_time} and brewing will continue at {end_time}".format(
+            self.notify("Alarm clock enabled", "Current server time is {current_time} and brewing will continue at {end_time}. Please ensure Auto is on.".format(
                 current_time=dt_local_now.strftime(NOTICE_DATE_FORMAT),
                 end_time=end_datetime_local.strftime(NOTICE_DATE_FORMAT)
             ), timeout=None)
 
             if self.force_off_at_start == "enabled":
-                self.notify("Alarm clock enabled", "Turning pump and kettle off")
+                self.notify("Alarm clock enabled", "Turning pump off and setting kettle target to 0c")
                 self.actor_off(int(self.pump))
                 self.set_target_temp(0, self.kettle)
 
