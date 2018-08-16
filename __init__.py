@@ -1,15 +1,16 @@
 #! /bin/env python2.7
-import datetime
+from datetime import tzinfo, timedelta, datetime
 import logging
-from datetime import timedelta
 import time
 
 from modules.core.props import Property, StepProperty
 from modules.core.step import StepBase
 from modules import cbpi
 
-# from timezones import zones
-class FixedOffsetTimezone(object):
+ZERO = timedelta(0)
+HOUR = timedelta(hours=1)
+
+class FixedOffsetTimezone(tzinfo):
     """Fixed offset in minutes east from UTC."""
     @classmethod
     def timezoneminutes_to_fixed_offset_string(cls, timezoneminutes):
@@ -63,18 +64,21 @@ class FixedOffsetTimezone(object):
 
             self.__offset = timedelta(minutes = offset)
             self.__name = self.timezoneminutes_to_fixed_offset_string(offset)
-        elif isinstance(offset, str):
-            if not offset.startswith("UTC"):
-                raise RuntimeError
+            return
 
+
+        if not offset.startswith("UTC"):
+            raise ValueError("Please supply offset in minutes as integer or as string in form 'UTC[+-]HH:MM', received: %s" % offset)
+
+        try:
             sign_char = offset[3]
             sign_multiplier = 1 if sign_char == '+' else -1
             hours = offset[4:6]
             minutes = offset[7:]
-            self.__offset = int(minutes) + int(hours) * 60 * sign_multiplier
+            self.__offset = timedelta(minutes=(int(minutes) + int(hours) * 60 * sign_multiplier))
             self.__name = offset
-        else:
-            raise RuntimeError
+        except:
+            raise ValueError("Please supply offset in minutes as integer or as string in form 'UTC[+-]HH:MM', received: %s" % offset)
 
 
     def utcoffset(self, dt):
@@ -136,6 +140,8 @@ SELECTABLE_TIMEZONES =[
     'UTC+11:00'
 ]
 
+NOTICE_DATE_FORMAT = '%-d %b %y, %-I:%M %p'
+
 @cbpi.step
 class AlarmClockStep(StepBase):
     mode = Property.Select("Mode", options=["disabled", "enabled"], description="If enabled then this step will block until after the set time.")
@@ -159,57 +165,62 @@ class AlarmClockStep(StepBase):
         if self.mode == "enabled":
             m_start_hour = int(self.start_hour)
             m_start_minute = int(self.start_minute)
-            end_timedelta = datetime.timedelta(
+            end_timedelta = timedelta(
                 hours=m_start_hour,
                 minutes=m_start_minute
             )
-            dt_now = datetime.datetime.utcnow()
+            dt_utc_now = datetime.utcnow()
 
             if FixedOffsetTimezone.server_timezone_in_utc():
-                # construct a new timezone based on the user's configuration
                 try:
+                    self._logger.info("AlarmClock: Trying to create user set timezone %s" % self.timezone)
                     local_timezone = FixedOffsetTimezone(self.timezone)
                 except:
+                    self._logger.info("AlarmClock: server is UTC and localtimezone is unset or invalid")
                     self.notify(
                         "Alarm clock not configured",
                         "Server is in UTC, please select a timezone in step configuration",
                         type="danger",
                         timeout=None
                     )
-                    self.next()
+                    self.mode = "disabled"
+                    return
             else:
-                # assume server clock is set to localtime
+                self._logger.info("AlarmClock: server is localtime, using that timezone")
                 local_timezone = FixedOffsetTimezone.fromSeconds(time.timezone)
 
-            dt_now = dt_now.replace(tzinfo=local_timezone)
+            self._logger.info("AlarmClock: localtime_timezone: %s" % local_timezone)
+            dt_utc_now = dt_utc_now.replace(tzinfo=FixedOffsetTimezone.utcTimezone())
+            dt_local_now = dt_utc_now.astimezone(local_timezone)
 
-            add_days = 1 if self.start_time_is_tomorrow(dt_now, end_timedelta) else 0
+            self._logger.info("AlarmClock: starting time UTC: %s" % dt_utc_now)
+            self._logger.info("AlarmClock: starting localtime: %s" % dt_local_now)
+            add_days = 1 if self.start_time_is_tomorrow(dt_local_now, end_timedelta) else 0
 
             end_datetime_local = self.construct_end_date(
-                dt_now,
+                dt_local_now,
                 m_start_hour,
                 m_start_minute,
                 add_days,
             ).replace(tzinfo=local_timezone)
 
             self.end_datetime_utc = end_datetime_local.astimezone(FixedOffsetTimezone.utcTimezone())
+            self._logger.info("AlarmClock: ending time in UTC: %s" % end_datetime_local)
+            self._logger.info("AlarmClock: ending localtime: %s" % self.end_datetime_utc)
 
             self.notify("Alarm clock enabled", "Current server time is {current_time} and brewing will continue at {end_time}".format(
-                current_time=dt_now,
-                end_time=end_datetime_local
+                current_time=dt_local_now.strftime(NOTICE_DATE_FORMAT),
+                end_time=end_datetime_local.strftime(NOTICE_DATE_FORMAT)
             ), timeout=None)
 
             if self.force_off_at_start == "enabled":
                 self.notify("Alarm clock enabled", "Turning pump and kettle off")
                 self.actor_off(int(self.pump))
                 self.set_target_temp(0, self.kettle)
-        else:
-            self.notify("Alarm clock not enabled!", "Starting the next step")
-            self.next()
 
     @staticmethod
     def start_time_is_tomorrow(dt_now, end_timedelta):
-        now_timedelta = datetime.timedelta(
+        now_timedelta = timedelta(
             hours=dt_now.hour,
             minutes=dt_now.minute
         )
@@ -217,8 +228,8 @@ class AlarmClockStep(StepBase):
 
     @staticmethod
     def construct_end_date(dt_now, start_hour, start_minute, add_days):
-        dt_end_day = dt_now + datetime.timedelta(days=add_days)
-        return datetime.datetime(
+        dt_end_day = dt_now + timedelta(days=add_days)
+        return datetime(
             year=dt_end_day.year,
             month=dt_end_day.month,
             day=dt_end_day.day,
@@ -228,10 +239,13 @@ class AlarmClockStep(StepBase):
 
     def execute(self):
         if self.mode != "enabled":
+            self._logger.info("AlarmClock: not enabled")
             self.notify("Alarm clock not enabled!", "Starting the next step")
             self.next()
             return
 
-        if datetime.datetime.now(FixedOffsetTimezone.utcTimezone()) >= self.end_datetime_utc:
+        if datetime.now(FixedOffsetTimezone.utcTimezone()) >= self.end_datetime_utc:
+            self._logger.info("AlarmClock: time to wake up!")
             self.notify("Alarm clock triggered", "Starting the next step", timeout=None)
             self.next()
+            return
