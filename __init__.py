@@ -87,8 +87,54 @@ class FixedOffsetTimezone(object):
         return ZERO
 
 
-# https://en.wikipedia.org/wiki/List_of_UTC_time_offsets
-
+SELECTABLE_TIMEZONES =[
+    'UTC-11:30',
+    'UTC-11:00',
+    'UTC-10:30',
+    'UTC-10:00',
+    'UTC-09:30',
+    'UTC-09:00',
+    'UTC-08:30',
+    'UTC-08:00',
+    'UTC-07:30',
+    'UTC-07:00',
+    'UTC-06:30',
+    'UTC-06:00',
+    'UTC-05:30',
+    'UTC-05:00',
+    'UTC-04:30',
+    'UTC-04:00',
+    'UTC-03:30',
+    'UTC-03:00',
+    'UTC-02:30',
+    'UTC-02:00',
+    'UTC-01:30',
+    'UTC-01:00',
+    'UTC-00:30',
+    'UTC+00:00',
+    'UTC+00:30',
+    'UTC+01:00',
+    'UTC+01:30',
+    'UTC+02:00',
+    'UTC+02:30',
+    'UTC+03:00',
+    'UTC+03:30',
+    'UTC+04:00',
+    'UTC+04:30',
+    'UTC+05:00',
+    'UTC+05:30',
+    'UTC+06:00',
+    'UTC+06:30',
+    'UTC+07:00',
+    'UTC+07:30',
+    'UTC+08:00',
+    'UTC+08:30',
+    'UTC+09:00',
+    'UTC+09:30',
+    'UTC+10:00',
+    'UTC+10:30',
+    'UTC+11:00'
+]
 
 @cbpi.step
 class AlarmClockStep(StepBase):
@@ -96,8 +142,7 @@ class AlarmClockStep(StepBase):
 
     timezone = Property.Select(
         "Timezone",
-        # options=sorted(zones.get_timezones_dict().keys()),
-        options=["1", "2", "3"],
+        options=SELECTABLE_TIMEZONES,
         description=FixedOffsetTimezone.server_timezone_desc()
     )
     start_hour = Property.Select("Start Hour", options=list(range(23)))
@@ -118,13 +163,41 @@ class AlarmClockStep(StepBase):
                 hours=m_start_hour,
                 minutes=m_start_minute
             )
-            dt_now = datetime.datetime.now()
+            dt_now = datetime.datetime.utcnow()
+
+            if FixedOffsetTimezone.server_timezone_in_utc():
+                # construct a new timezone based on the user's configuration
+                try:
+                    local_timezone = FixedOffsetTimezone(self.timezone)
+                except:
+                    self.notify(
+                        "Alarm clock not configured",
+                        "Server is in UTC, please select a timezone in step configuration",
+                        type="danger",
+                        timeout=None
+                    )
+                    self.next()
+            else:
+                # assume server clock is set to localtime
+                local_timezone = FixedOffsetTimezone.fromSeconds(time.timezone)
+
+            dt_now = dt_now.replace(tzinfo=local_timezone)
 
             add_days = 1 if self.start_time_is_tomorrow(dt_now, end_timedelta) else 0
 
-            self.end_datetime = self.construct_end_date(dt_now, m_start_hour, m_start_minute, add_days)
+            end_datetime_local = self.construct_end_date(
+                dt_now,
+                m_start_hour,
+                m_start_minute,
+                add_days,
+            ).replace(tzinfo=local_timezone)
 
-            self.notify("Alarm clock enabled", "Brewing will continue at %s" % self.end_datetime, timeout=None)
+            self.end_datetime_utc = end_datetime_local.astimezone(FixedOffsetTimezone.utcTimezone())
+
+            self.notify("Alarm clock enabled", "Current server time is {current_time} and brewing will continue at {end_time}".format(
+                current_time=dt_now,
+                end_time=end_datetime_local
+            ), timeout=None)
 
             if self.force_off_at_start == "enabled":
                 self.notify("Alarm clock enabled", "Turning pump and kettle off")
@@ -159,6 +232,6 @@ class AlarmClockStep(StepBase):
             self.next()
             return
 
-        if datetime.datetime.now(FixedOffsetTimezone.utcTimezone()) >= self.end_datetime:
+        if datetime.datetime.now(FixedOffsetTimezone.utcTimezone()) >= self.end_datetime_utc:
             self.notify("Alarm clock triggered", "Starting the next step", timeout=None)
             self.next()
