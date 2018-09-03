@@ -230,3 +230,7 @@ class AlarmClockStep(StepBase):
             self.notify("Alarm clock triggered", "Starting the next step", timeout=None)
             self.next()
             return
+
+        if self.force_off_at_start == "enabled":
+            self.actor_off(int(self.pump))
+            return
