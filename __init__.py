@@ -212,7 +212,7 @@ class AlarmClockStep(StepBase):
                 for kettle_str in ['kettle', 'kettle2', 'kettle3']:
                     kettle_idx = self.get_device_index_if_configured(kettle_str)
 
-                    if kettle_idx:
+                    if kettle_idx and self.get_target_temp(kettle_idx):
                         self._logger.info("AlarmClock: setting kettle index %s to 0c" % kettle_idx)
                         self.set_target_temp(0, kettle_idx)
 
