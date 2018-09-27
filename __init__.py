@@ -218,9 +218,10 @@ class AlarmClockStep(StepBase):
 
     def switch_off_pumps(self, list_of_pumps):
         res = []
+        actors = self.api.cache.get('actors')
         for pump_str in list_of_pumps:
             pump_idx = self.get_device_index_if_configured(pump_str)
-
+            # todo check that the pump_idx exists as a key in actors
             if pump_idx:
                 try:
                     self.actor_off(pump_idx)
