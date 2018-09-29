@@ -143,18 +143,12 @@ class AlarmClockStep(StepBase):
     start_hour = Property.Select("Start Hour", options=list(range(23)))
     start_minute = Property.Select("Start Minute", options=list(range(0, 60, 5)))
     force_off_at_start = Property.Select("Force off at start", options=["disabled", "enabled"], description="If enabled then this step will switch off selected pump(s) and set temperature(s) to 0 when it starts.")
-    kettle = StepProperty.Kettle("Kettle 1", description=KETTLE_DESC)
-    pump = StepProperty.Actor("Pump 1", description=PUMP_DESC)
-    kettle2 = StepProperty.Kettle("Kettle 2", description=KETTLE_DESC)
-    pump2 = StepProperty.Actor("Pump 2", description=PUMP_DESC)
-    kettle3 = StepProperty.Kettle("Kettle 3", description=KETTLE_DESC)
-    pump3 = StepProperty.Actor("Pump 3", description=PUMP_DESC)
-
+    zzz_actor_blacklist = Property.Text("Actors to ignore", configurable=True, default_value="", description="Comma seperated list of actors to ignore, e.g. 'system_fan, indicator_light'")
 
     def __init__(self, *args, **kwds):
         StepBase.__init__(self, *args, **kwds)
-        self._pumps_to_check = None
         self._logger = logging.getLogger(type(self).__name__)
+        self._normalised_actor_blacklist = None
 
     def init(self):
         if self.mode == "enabled":
@@ -206,41 +200,31 @@ class AlarmClockStep(StepBase):
 
             if self.force_off_at_start == "enabled":
                 self.notify("Alarm clock enabled", "Turning pump off and setting kettle target to 0c")
-                # switch pumps off
-                self._pumps_to_check = self.switch_off_pumps(['pump', 'pump2', 'pump3'])
                 # set kettles to 0
-                for kettle_str in ['kettle', 'kettle2', 'kettle3']:
-                    kettle_idx = self.get_device_index_if_configured(kettle_str)
+                for kettle in self.api.cache.get('kettle').keys():
+                    self.set_target_temp(0, kettle)
 
-                    if kettle_idx and self.get_target_temp(kettle_idx):
-                        self._logger.info("AlarmClock: setting kettle index %s to 0c" % kettle_idx)
-                        self.set_target_temp(0, kettle_idx)
+                self._normalised_actor_blacklist = self.normalise_actor_blacklist()
+                # switch actors off
+                self.switch_off_actors()
 
-    def switch_off_pumps(self, list_of_pumps):
+    def normalise_actor_blacklist(self):
         res = []
-        actors = self.api.cache.get('actors')
-        for pump_str in list_of_pumps:
-            pump_idx = self.get_device_index_if_configured(pump_str)
-            # todo check that the pump_idx exists as a key in actors
-            if pump_idx:
-                try:
-                    self.actor_off(pump_idx)
-                    # this pump is controllable if we are still here
-                    res.append(pump_str)
-                except Exception as e:
-                    self._logger.info("AlarmClock: unable to switch off %s (%s)" % (pump_str, e))
-            else:
-                self._logger.info("AlarmClock: %s does not appear to be configured" % pump_str)
+        if isinstance(self.zzz_actor_blacklist, unicode):
+            for blacklist_entry in self.zzz_actor_blacklist.split(','):
+                res.append(blacklist_entry.strip().lower())
 
         return res
 
-    def get_device_index_if_configured(self, _property):
-        dev_idx = getattr(self, _property)
+    def switch_off_actors(self):
+        for actor in self.api.cache.get('actors').values():
+            if actor.name.lower() in self._normalised_actor_blacklist:
+                continue
 
-        if isinstance(dev_idx, unicode) and dev_idx != '':
-            return int(dev_idx)
-
-        return None
+            try:
+                self.actor_off(actor.id)
+            except Exception as e:
+                self._logger.info("AlarmClock: unable to switch off actor %s (%s)" % (actor.name, e))
 
     @staticmethod
     def start_time_is_tomorrow(dt_now, end_timedelta):
@@ -275,6 +259,6 @@ class AlarmClockStep(StepBase):
             return
 
         if self.force_off_at_start == "enabled":
-            self._pumps_to_check = self.switch_off_pumps(self._pumps_to_check)
+            self.switch_off_actors()
             return
 
