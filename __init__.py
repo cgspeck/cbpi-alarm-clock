@@ -127,9 +127,6 @@ SELECTABLE_TIMEZONES =[
 
 NOTICE_DATE_FORMAT = '%-d %b %y, %-I:%M %p'
 
-KETTLE_DESC = 'Optional, selected kettle temp will be set to 0c until alarm expires.'
-
-PUMP_DESC = 'Optional, selected kettle temp will be switch off until alarm expires.'
 
 @cbpi.step
 class AlarmClockStep(StepBase):
