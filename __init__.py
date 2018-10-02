@@ -131,7 +131,6 @@ NOTICE_DATE_FORMAT = '%-d %b %y, %-I:%M %p'
 @cbpi.step
 class AlarmClockStep(StepBase):
     mode = Property.Select("Mode", options=["disabled", "enabled"], description="If enabled then this step will block until after the set time.")
-
     timezone = Property.Select(
         "Your Timezone",
         options=SELECTABLE_TIMEZONES,
@@ -139,8 +138,8 @@ class AlarmClockStep(StepBase):
     )
     start_hour = Property.Select("Start Hour", options=list(range(23)))
     start_minute = Property.Select("Start Minute", options=list(range(0, 60, 5)))
-    force_off_at_start = Property.Select("Force off at start", options=["disabled", "enabled"], description="If enabled then this step will switch off selected pump(s) and set temperature(s) to 0 when it starts.")
-    zzz_actor_blacklist = Property.Text("Actors to ignore", configurable=True, default_value="", description="Comma seperated list of actors to ignore, e.g. 'system_fan, indicator_light'")
+    force_off_at_start = Property.Select("Force off at start", options=["disabled", "enabled"], description="If enabled then this step will switch off all actors and set the temperature of all kettles to 0c when it starts.")
+    zzz_actor_blacklist = Property.Text("Excluded actors", configurable=True, default_value="", description="Comma seperated list of actors to ignore, e.g. 'system fan, aux pump, anti freeze element'")
 
     def __init__(self, *args, **kwds):
         StepBase.__init__(self, *args, **kwds)
