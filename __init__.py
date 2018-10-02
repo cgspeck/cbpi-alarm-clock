@@ -127,10 +127,10 @@ SELECTABLE_TIMEZONES =[
 
 NOTICE_DATE_FORMAT = '%-d %b %y, %-I:%M %p'
 
+
 @cbpi.step
 class AlarmClockStep(StepBase):
     mode = Property.Select("Mode", options=["disabled", "enabled"], description="If enabled then this step will block until after the set time.")
-
     timezone = Property.Select(
         "Your Timezone",
         options=SELECTABLE_TIMEZONES,
@@ -138,13 +138,13 @@ class AlarmClockStep(StepBase):
     )
     start_hour = Property.Select("Start Hour", options=list(range(23)))
     start_minute = Property.Select("Start Minute", options=list(range(0, 60, 5)))
-    force_off_at_start = Property.Select("Force off at start", options=["disabled", "enabled"], description="If enabled then this step will switch off pump and set temp to 0 when it starts.")
-    kettle = StepProperty.Kettle("Kettle")
-    pump = StepProperty.Actor("Pump", description="Pump actor which gets switched off")
+    force_off_at_start = Property.Select("Force off at start", options=["disabled", "enabled"], description="If enabled then this step will switch off all actors and set the temperature of all kettles to 0c when it starts.")
+    zzz_actor_blacklist = Property.Text("Excluded actors", configurable=True, default_value="", description="Comma seperated list of actors to ignore, e.g. 'system fan, aux pump, anti freeze element'")
 
     def __init__(self, *args, **kwds):
         StepBase.__init__(self, *args, **kwds)
         self._logger = logging.getLogger(type(self).__name__)
+        self._normalised_actor_blacklist = []
 
     def init(self):
         if self.mode == "enabled":
@@ -196,8 +196,35 @@ class AlarmClockStep(StepBase):
 
             if self.force_off_at_start == "enabled":
                 self.notify("Alarm clock enabled", "Turning pump off and setting kettle target to 0c")
-                self.actor_off(int(self.pump))
-                self.set_target_temp(0, self.kettle)
+                # set kettles to 0
+                for kettle in self.api.cache.get('kettle').keys():
+                    self.set_target_temp(0, kettle)
+
+                if isinstance(self.zzz_actor_blacklist, unicode):
+                    self._normalised_actor_blacklist = self.normalise_actor_blacklist(self.zzz_actor_blacklist)
+
+                # switch actors off
+                self.switch_off_actors()
+
+    @staticmethod
+    def normalise_actor_blacklist(raw_list):
+        res = []
+
+        for blacklist_entry in raw_list.split(','):
+            if len(blacklist_entry) > 0:
+                res.append(blacklist_entry.strip().lower())
+
+        return res
+
+    def switch_off_actors(self):
+        for actor in self.api.cache.get('actors').values():
+            if actor.name.lower() in self._normalised_actor_blacklist:
+                continue
+
+            try:
+                self.actor_off(actor.id)
+            except Exception as e:
+                self._logger.info("AlarmClock: unable to switch off actor %s (%s)" % (actor.name, e))
 
     @staticmethod
     def start_time_is_tomorrow(dt_now, end_timedelta):
@@ -232,5 +259,6 @@ class AlarmClockStep(StepBase):
             return
 
         if self.force_off_at_start == "enabled":
-            self.actor_off(int(self.pump))
+            self.switch_off_actors()
             return
+
