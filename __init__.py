@@ -145,7 +145,7 @@ class AlarmClockStep(StepBase):
     def __init__(self, *args, **kwds):
         StepBase.__init__(self, *args, **kwds)
         self._logger = logging.getLogger(type(self).__name__)
-        self._normalised_actor_blacklist = None
+        self._normalised_actor_blacklist = []
 
     def init(self):
         if self.mode == "enabled":
@@ -201,14 +201,18 @@ class AlarmClockStep(StepBase):
                 for kettle in self.api.cache.get('kettle').keys():
                     self.set_target_temp(0, kettle)
 
-                self._normalised_actor_blacklist = self.normalise_actor_blacklist()
+                if isinstance(self.zzz_actor_blacklist, unicode):
+                    self._normalised_actor_blacklist = self.normalise_actor_blacklist(self.zzz_actor_blacklist)
+
                 # switch actors off
                 self.switch_off_actors()
 
-    def normalise_actor_blacklist(self):
+    @staticmethod
+    def normalise_actor_blacklist(raw_list):
         res = []
-        if isinstance(self.zzz_actor_blacklist, unicode):
-            for blacklist_entry in self.zzz_actor_blacklist.split(','):
+
+        for blacklist_entry in raw_list.split(','):
+            if len(blacklist_entry) > 0:
                 res.append(blacklist_entry.strip().lower())
 
         return res
