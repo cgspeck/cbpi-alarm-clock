@@ -197,10 +197,10 @@ class AlarmClockStep(StepBase):
             if self.force_off_at_start == "enabled":
                 self.notify("Alarm clock enabled", "Turning pump off and setting kettle target to 0c")
                 # set kettles to 0
-                for kettle in self.api.cache.get('kettle').keys():
+                for kettle in list(self.api.cache.get('kettle').keys()):
                     self.set_target_temp(0, kettle)
 
-                if isinstance(self.zzz_actor_blacklist, unicode):
+                if isinstance(self.zzz_actor_blacklist, str):
                     self._normalised_actor_blacklist = self.normalise_actor_blacklist(self.zzz_actor_blacklist)
 
                 # switch actors off
@@ -217,7 +217,7 @@ class AlarmClockStep(StepBase):
         return res
 
     def switch_off_actors(self):
-        for actor in self.api.cache.get('actors').values():
+        for actor in list(self.api.cache.get('actors').values()):
             if actor.name.lower() in self._normalised_actor_blacklist:
                 continue
 
@@ -249,13 +249,13 @@ class AlarmClockStep(StepBase):
         if self.mode != "enabled":
             self._logger.info("AlarmClock: not enabled")
             self.notify("Alarm clock not enabled!", "Starting the next step")
-            self.next()
+            next(self)
             return
 
         if datetime.now(FixedOffsetTimezone.utcTimezone()) >= self.end_datetime_utc:
             self._logger.info("AlarmClock: time to wake up!")
             self.notify("Alarm clock triggered", "Starting the next step", timeout=None)
-            self.next()
+            next(self)
             return
 
         if self.force_off_at_start == "enabled":
