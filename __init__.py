@@ -1,14 +1,14 @@
 #! /bin/env python2.7
 from datetime import tzinfo, timedelta, datetime
 import logging
-import time
 
-from modules.core.props import Property, StepProperty
+from modules.core.props import Property
 from modules.core.step import StepBase
 from modules import cbpi
 
 ZERO = timedelta(0)
 HOUR = timedelta(hours=1)
+
 
 class FixedOffsetTimezone(tzinfo):
     """Fixed offset in minutes east from UTC."""
@@ -45,26 +45,28 @@ class FixedOffsetTimezone(tzinfo):
         """
         if isinstance(offset, int):
             if offset >= 720 or offset <= -720:
-                raise ValueError('Offset cannot be >= 720 minutes, try #fromSeconds if creating a fixed offset from seconds')
+                raise ValueError(
+                    'Offset cannot be >= 720 minutes, try #fromSeconds if creating a fixed offset from seconds')
 
-            self.__offset = timedelta(minutes = offset)
+            self.__offset = timedelta(minutes=offset)
             self.__name = self.timezoneminutes_to_fixed_offset_string(offset)
             return
 
-
         if not offset.startswith("UTC"):
-            raise ValueError("Please supply offset in minutes as integer or as string in form 'UTC[+-]HH:MM', received: %s" % offset)
+            raise ValueError(
+                "Please supply offset in minutes as integer or as string in form 'UTC[+-]HH:MM', received: %s" % offset)
 
         try:
             sign_char = offset[3]
             sign_multiplier = 1 if sign_char == '+' else -1
             hours = offset[4:6]
             minutes = offset[7:]
-            self.__offset = timedelta(minutes=(int(minutes) + int(hours) * 60 * sign_multiplier))
+            self.__offset = timedelta(
+                minutes=(int(minutes) + int(hours) * 60 * sign_multiplier))
             self.__name = offset
         except:
-            raise ValueError("Please supply offset in minutes as integer or as string in form 'UTC[+-]HH:MM', received: %s" % offset)
-
+            raise ValueError(
+                "Please supply offset in minutes as integer or as string in form 'UTC[+-]HH:MM', received: %s" % offset)
 
     def utcoffset(self, dt):
         return self.__offset
@@ -76,7 +78,7 @@ class FixedOffsetTimezone(tzinfo):
         return ZERO
 
 
-SELECTABLE_TIMEZONES =[
+SELECTABLE_TIMEZONES = [
     'UTC-11:30',
     'UTC-11:00',
     'UTC-10:30',
@@ -130,16 +132,26 @@ NOTICE_DATE_FORMAT = '%-d %b %y, %-I:%M %p'
 
 @cbpi.step
 class AlarmClockStep(StepBase):
-    mode = Property.Select("Mode", options=["disabled", "enabled"], description="If enabled then this step will block until after the set time.")
+    aaa_mode = Property.Select("Mode", options=[
+                               "disabled", "enabled"], description="If enabled then this step will block until after the set time.")
+    force_off_at_start = Property.Select("Force off at start", options=[
+                                         "disabled", "enabled"], description="If enabled then this step will switch off all actors and set the temperature of all kettles to 0c when it starts.")
+    hold_temp = Property.Number(
+        "Holding Temperature",
+        configurable=True,
+        default_value=0,
+        description="The brewery will be set to hold this temperature while waiting for the alarm to expire. For values > 0, the pumps and elements will be enabled."
+    )
     timezone = Property.Select(
         "Your Timezone",
         options=SELECTABLE_TIMEZONES,
         description="Please set your local timezone here."
     )
     start_hour = Property.Select("Start Hour", options=list(range(23)))
-    start_minute = Property.Select("Start Minute", options=list(range(0, 60, 5)))
-    force_off_at_start = Property.Select("Force off at start", options=["disabled", "enabled"], description="If enabled then this step will switch off all actors and set the temperature of all kettles to 0c when it starts.")
-    zzz_actor_blacklist = Property.Text("Excluded actors", configurable=True, default_value="", description="Comma seperated list of actors to ignore, e.g. 'system fan, aux pump, anti freeze element'")
+    start_minute = Property.Select(
+        "Start Minute", options=list(range(0, 60, 5)))
+    zzz_actor_blacklist = Property.Text("Excluded actors", configurable=True, default_value="",
+                                        description="Comma seperated list of actors to ignore, e.g. 'system fan, aux pump, anti freeze element'")
 
     def __init__(self, *args, **kwds):
         StepBase.__init__(self, *args, **kwds)
@@ -147,7 +159,7 @@ class AlarmClockStep(StepBase):
         self._normalised_actor_blacklist = []
 
     def init(self):
-        if self.mode == "enabled":
+        if self.aaa_mode == "enabled":
             m_start_hour = int(self.start_hour)
             m_start_minute = int(self.start_minute)
             end_timedelta = timedelta(
@@ -157,26 +169,32 @@ class AlarmClockStep(StepBase):
             dt_utc_now = datetime.utcnow()
 
             try:
-                self._logger.info("AlarmClock: Trying to create user set timezone %s" % self.timezone)
+                self._logger.info(
+                    "AlarmClock: Trying to create user set timezone %s" % self.timezone)
                 local_timezone = FixedOffsetTimezone(self.timezone)
             except:
-                self._logger.info("AlarmClock: timezone is unset or invalid (%s)" % self.timezone)
+                self._logger.info(
+                    "AlarmClock: timezone is unset or invalid (%s)" % self.timezone)
                 self.notify(
                     "Alarm clock not configured",
                     "Please select your local timezone in step configuration",
                     type="danger",
                     timeout=None
                 )
-                self.mode = "disabled"
+                self.aaa_mode = "disabled"
                 return
 
-            self._logger.info("AlarmClock: localtime_timezone: %s" % local_timezone)
-            dt_utc_now = dt_utc_now.replace(tzinfo=FixedOffsetTimezone.utcTimezone())
+            self._logger.info(
+                "AlarmClock: localtime_timezone: %s" % local_timezone)
+            dt_utc_now = dt_utc_now.replace(
+                tzinfo=FixedOffsetTimezone.utcTimezone())
             dt_local_now = dt_utc_now.astimezone(local_timezone)
 
             self._logger.info("AlarmClock: starting time UTC: %s" % dt_utc_now)
-            self._logger.info("AlarmClock: starting localtime: %s" % dt_local_now)
-            add_days = 1 if self.start_time_is_tomorrow(dt_local_now, end_timedelta) else 0
+            self._logger.info(
+                "AlarmClock: starting localtime: %s" % dt_local_now)
+            add_days = 1 if self.start_time_is_tomorrow(
+                dt_local_now, end_timedelta) else 0
 
             end_datetime_local = self.construct_end_date(
                 dt_local_now,
@@ -185,23 +203,34 @@ class AlarmClockStep(StepBase):
                 add_days,
             ).replace(tzinfo=local_timezone)
 
-            self.end_datetime_utc = end_datetime_local.astimezone(FixedOffsetTimezone.utcTimezone())
-            self._logger.info("AlarmClock: ending time in UTC: %s" % self.end_datetime_utc)
-            self._logger.info("AlarmClock: ending localtime: %s" % end_datetime_local)
+            self.end_datetime_utc = end_datetime_local.astimezone(
+                FixedOffsetTimezone.utcTimezone())
+            self._logger.info("AlarmClock: ending time in UTC: %s" %
+                              self.end_datetime_utc)
+            self._logger.info("AlarmClock: ending localtime: %s" %
+                              end_datetime_local)
 
             self.notify("Alarm clock enabled", "Current server time is {current_time} and brewing will continue at {end_time}. Please ensure Auto is on.".format(
                 current_time=dt_local_now.strftime(NOTICE_DATE_FORMAT),
                 end_time=end_datetime_local.strftime(NOTICE_DATE_FORMAT)
             ), timeout=None)
 
-            if self.force_off_at_start == "enabled":
-                self.notify("Alarm clock enabled", "Turning pump off and setting kettle target to 0c")
-                # set kettles to 0
-                for kettle in self.api.cache.get('kettle').keys():
-                    self.set_target_temp(0, kettle)
+            hold_temp = self.hold_temp
+
+            self.notify("Alarm clock enabled",
+                        "Setting kettle target to %s c" % hold_temp)
+            # set kettles to hold_temp
+
+            for kettle in self.api.cache.get('kettle').keys():
+                self.set_target_temp(hold_temp, kettle)
+
+            if hold_temp == 0 and self.force_off_at_start == "enabled":
+                self.notify("Alarm clock enabled",
+                            "Turning pumps off.")
 
                 if isinstance(self.zzz_actor_blacklist, unicode):
-                    self._normalised_actor_blacklist = self.normalise_actor_blacklist(self.zzz_actor_blacklist)
+                    self._normalised_actor_blacklist = self.normalise_actor_blacklist(
+                        self.zzz_actor_blacklist)
 
                 # switch actors off
                 self.switch_off_actors()
@@ -224,7 +253,8 @@ class AlarmClockStep(StepBase):
             try:
                 self.actor_off(actor.id)
             except Exception as e:
-                self._logger.info("AlarmClock: unable to switch off actor %s (%s)" % (actor.name, e))
+                self._logger.info(
+                    "AlarmClock: unable to switch off actor %s (%s)" % (actor.name, e))
 
     @staticmethod
     def start_time_is_tomorrow(dt_now, end_timedelta):
@@ -246,7 +276,7 @@ class AlarmClockStep(StepBase):
         )
 
     def execute(self):
-        if self.mode != "enabled":
+        if self.aaa_mode != "enabled":
             self._logger.info("AlarmClock: not enabled")
             self.notify("Alarm clock not enabled!", "Starting the next step")
             self.next()
@@ -254,11 +284,11 @@ class AlarmClockStep(StepBase):
 
         if datetime.now(FixedOffsetTimezone.utcTimezone()) >= self.end_datetime_utc:
             self._logger.info("AlarmClock: time to wake up!")
-            self.notify("Alarm clock triggered", "Starting the next step", timeout=None)
+            self.notify("Alarm clock triggered",
+                        "Starting the next step", timeout=None)
             self.next()
             return
 
-        if self.force_off_at_start == "enabled":
+        if self.hold_temp == 0 and self.force_off_at_start == "enabled":
             self.switch_off_actors()
             return
-
